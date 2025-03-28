@@ -39,9 +39,29 @@ class TaskController extends Controller
     public function index()
     {
         $cacheKey = 'user_' . Auth::id() . '_tasks_page_' . request('page', 1);
+        $cacheKey .= '_' . request('search', '');
+        $cacheKey .= '_' . request('due_date_from', '');
+        $cacheKey .= '_' . request('due_date_to', '');
 
         $tasks = Cache::remember($cacheKey, self::CACHE_TTL, function () {
-            return $this->baseQuery()
+            $query = $this->baseQuery();
+
+            if (request()->has('search')) {
+                $query->where(function ($query) {
+                    $query->where('title', 'ILIKE', '%' . request('search') . '%')
+                        ->orWhere('description', 'ILIKE', '%' . request('search') . '%');
+                });
+            }
+
+            if (request()->has('due_date_from')) {
+                $query->where('due_date', '>=', request('due_date_from'));
+            }
+
+            if (request()->has('due_date_to')) {
+                $query->where('due_date', '<=', request('due_date_to'));
+            }
+
+            return $query
                 ->select(['id', 'title', 'due_date', 'created_at'])
                 ->orderBy('due_date', 'asc')
                 ->paginate(10);
