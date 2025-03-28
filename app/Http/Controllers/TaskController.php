@@ -9,15 +9,17 @@ use OpenApi\Annotations as OA;
 
 class TaskController extends Controller
 {
-    // Cache duration in minutes
-    private const CACHE_TTL = 60;
-
-    /**
-     * Get base query with user scope
-     */
     protected function baseQuery()
     {
         return Task::where('user_id', Auth::id());
+    }
+
+    protected function getCacheKey($suffix = '')
+    {
+        $userId = Auth::id();
+        $queryParams = request()->query();
+        $paramsString = $queryParams ? md5(json_encode($queryParams)) : 'default';
+        return "tasks:user:{$userId}:{$paramsString}:{$suffix}";
     }
 
     /**
@@ -26,6 +28,34 @@ class TaskController extends Controller
      *     tags={"Tasks"},
      *     summary="Get all tasks for the authenticated user",
      *     security={{"bearerAuth": {}}},
+     *     @OA\Parameter(
+     *         name="search",
+     *         in="query",
+     *         description="Search tasks by title or description",
+     *         required=false,
+     *         @OA\Schema(type="string")
+     *     ),
+     *     @OA\Parameter(
+     *         name="due_date_from",
+     *         in="query",
+     *         description="Filter tasks by due date from",
+     *         required=false,
+     *         @OA\Schema(type="string", format="date")
+     *     ),
+     *     @OA\Parameter(
+     *         name="due_date_to",
+     *         in="query",
+     *         description="Filter tasks by due date to",
+     *         required=false,
+     *         @OA\Schema(type="string", format="date")
+     *     ),
+     *     @OA\Parameter(
+     *         name="sort",
+     *         in="query",
+     *         description="Sort tasks by due date (asc or desc)",
+     *         required=false,
+     *         @OA\Schema(type="string", enum={"asc", "desc"})
+     *     ),
      *     @OA\Response(
      *         response=200,
      *         description="List of tasks",
@@ -38,13 +68,12 @@ class TaskController extends Controller
      */
     public function index()
     {
-        $cacheKey = 'user_' . Auth::id() . '_tasks_page_' . request('page', 1);
-        $cacheKey .= '_' . request('search', '');
-        $cacheKey .= '_' . request('due_date_from', '');
-        $cacheKey .= '_' . request('due_date_to', '');
+        $sortDirection = request('sort', 'desc');
+        $hasQueryParams = request()->hasAny(['search', 'due_date_from', 'due_date_to', 'sort']);
 
-        $tasks = Cache::remember($cacheKey, self::CACHE_TTL, function () {
+        if ($hasQueryParams) {
             $query = $this->baseQuery();
+            $query->orderBy('due_date', $sortDirection);
 
             if (request()->has('search')) {
                 $query->where(function ($query) {
@@ -61,11 +90,24 @@ class TaskController extends Controller
                 $query->where('due_date', '<=', request('due_date_to'));
             }
 
-            return $query
+            $tasks = $query
                 ->select(['id', 'title', 'due_date', 'created_at'])
-                ->orderBy('due_date', 'asc')
                 ->paginate(10);
-        });
+
+            return response()->json($tasks);
+        }
+
+        $cacheKey = $this->getCacheKey('index');
+        $tasks = Cache::remember(
+            $cacheKey,
+            3600,
+            function () use ($sortDirection) {
+                return $this->baseQuery()
+                    ->orderBy('due_date', $sortDirection)
+                    ->select(['id', 'title', 'due_date', 'created_at'])
+                    ->paginate(10);
+            }
+        );
 
         return response()->json($tasks);
     }
@@ -100,6 +142,7 @@ class TaskController extends Controller
             'description' => 'nullable|string',
             'due_date' => 'date|after_or_equal:today'
         ]);
+
         $task = $this->baseQuery()->create([
             'title' => $validated['title'],
             'description' => $validated['description'],
@@ -107,7 +150,7 @@ class TaskController extends Controller
             'user_id' => $user->id
         ]);
 
-        $this->clearUserTasksCache();
+        Cache::forget($this->getCacheKey('index'));
 
         return response()->json([
             'message' => 'Task created successfully',
@@ -136,11 +179,15 @@ class TaskController extends Controller
      */
     public function show($id)
     {
-        $cacheKey = 'task_' . $id;
+        $cacheKey = $this->getCacheKey("show:{$id}");
 
-        $task = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($id) {
-            return $this->baseQuery()->findOrFail($id);
-        });
+        $task = Cache::remember(
+            $cacheKey,
+            3600,
+            function () use ($id) {
+                return $this->baseQuery()->findOrFail($id);
+            }
+        );
 
         return response()->json($task);
     }
@@ -184,8 +231,8 @@ class TaskController extends Controller
         $task->fill($validated);
         $task->save();
 
-        Cache::forget('task_' . $id);
-        $this->clearUserTasksCache();
+        Cache::forget($this->getCacheKey('index'));
+        Cache::forget($this->getCacheKey("show:{$id}"));
 
         return response()->json($task->only(['id', 'title', 'due_date', 'description']));
     }
@@ -213,21 +260,9 @@ class TaskController extends Controller
         $task = $this->baseQuery()->findOrFail($id);
         $task->delete();
 
-        Cache::forget('task_' . $id);
-        $this->clearUserTasksCache();
+        Cache::forget($this->getCacheKey('index'));
+        Cache::forget($this->getCacheKey("show:{$id}"));
 
         return response()->json(null, 204);
-    }
-
-    /**
-     * Clear all tasks cache for the authenticated user
-     */
-    protected function clearUserTasksCache()
-    {
-        $prefix = 'user_' . Auth::id() . '_tasks_page_';
-        Cache::forget($prefix . request('page', 1));
-
-        $keys = Cache::getStore()->getPrefix() . $prefix . '*';
-        Cache::forget($keys);
     }
 }
