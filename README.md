@@ -58,6 +58,10 @@ php artisan migrate
 - Start Laravel server: `php artisan serve`
 - Start Vite dev server: `npm run dev`
 
+## API Documentation
+
+After starting the Laravel server, you can access the API documentation at <http://localhost:8000/api/documentation>.
+
 ## Production Build
 
 - Run `npm run build`
@@ -66,6 +70,6 @@ php artisan migrate
 
 Run PHPUnit tests:
 
-```
+```bash
 php artisan test
 ```
