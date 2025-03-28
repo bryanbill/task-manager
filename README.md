@@ -1,3 +1,37 @@
+# Task Manager
+
+A Laravel + Vue.js task management application with features like:
+- Task creation, editing and deletion
+- Task filtering and sorting
+- Pagination
+- Form validation
+
+## Requirements
+- PHP 8.1+
+- Composer
+- Node.js 16+
+
+## Installation
+1. Clone the repository
+2. Run `composer install`
+3. Run `npm install`
+4. Copy `.env.example` to `.env` and configure your database
+5. Run `php artisan key:generate`
+6. Run migrations: `php artisan migrate`
+
+## Development
+- Start Laravel server: `php artisan serve`
+- Start Vite dev server: `npm run dev`
+
+## Production Build
+- Run `npm run build`
+
+## Testing
+Run PHPUnit tests:
+```
+php artisan test
+```
+
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
 <p align="center">
